@@ -1,0 +1,12 @@
+{
+	"ConnectionStrings": {
+		"BaseConnectionString": "server=localhost;user id=admin;database=task_app_db"
+	},
+	"Logging": {
+		"LogLevel": {
+			// Configures different logging levels based on logger type names.
+			"Default": "Trace",
+			"Microsoft": "Trace"
+		}
+	}
+}
