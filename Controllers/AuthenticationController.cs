@@ -78,6 +78,7 @@ namespace BaseCoreAPI.Controllers
             return response;
         }
 
+        [AllowAnonymous]
         [Route("validateToken")]
         [HttpGet]
         public IActionResult ValidateToken(string token)
@@ -97,6 +98,7 @@ namespace BaseCoreAPI.Controllers
             return response;
         }
 
+        [AllowAnonymous]
         [Route("checkStatus")]
         [HttpGet]
         public IActionResult CheckSessionStatus()

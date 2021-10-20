@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace BaseCoreAPI.Controllers
 {
@@ -10,6 +11,7 @@ namespace BaseCoreAPI.Controllers
 
         }
 
+        [Authorize]
         [HttpGet]
         public IActionResult Get()
         {
