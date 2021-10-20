@@ -4,9 +4,15 @@
 	},
 	"Logging": {
 		"LogLevel": {
-			// Configures different logging levels based on logger type names.
 			"Default": "Trace",
 			"Microsoft": "Trace"
 		}
+	},
+	"Tokens": {
+		"Key": "ThisismySecretKey",
+		"Issuer": "http://localhost:8888/",
+		"Audience": "Users",
+		"AccessTokenExpiration": "15",
+		"RefreshTokenExpiration": "20"
 	}
 }
