@@ -1,4 +1,6 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using System.Linq;
+using BaseCoreAPI.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BaseCoreAPI.Controllers
@@ -6,9 +8,11 @@ namespace BaseCoreAPI.Controllers
     [Route("/api/[Controller]")]
     public class BaseAPIController : ControllerBase
     {
-        public BaseAPIController()
-        {
+        private readonly BaseContext _context;
 
+        public BaseAPIController(BaseContext baseContext)
+        {
+            _context = baseContext;
         }
 
         [Authorize]
@@ -16,6 +20,14 @@ namespace BaseCoreAPI.Controllers
         public IActionResult Get()
         {
             return Ok("Test Response Message");
+        }
+
+        [Authorize]
+        [HttpGet]
+        [Route("get-rooms")]
+        public IActionResult GetRooms()
+        {
+            return Ok(_context.Rooms.ToList());
         }
     }
 }

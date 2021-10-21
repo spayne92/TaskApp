@@ -1,11 +1,18 @@
+using System;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;  
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
-using BaseCoreAPI.Data;
-using BaseCoreAPI.Data.DTOs;
+using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
-using BaseCoreAPI.Services;
+using System.Linq;
 
 namespace BaseCoreAPI.Controllers
 {
@@ -13,69 +20,79 @@ namespace BaseCoreAPI.Controllers
     public class AuthenticationController : ControllerBase
     {
         private readonly IConfiguration _config;
-        private readonly IUserRepository _userRepository;
-        private readonly ITokenService _tokenService;
+        private readonly UserManager<User> _userManager;
         private readonly JwtTokenConfig _jwtTokenConfig;
-        private string generatedToken = null;
 
-        public AuthenticationController(IConfiguration config, ITokenService tokenService, IUserRepository userRepository)
+        public AuthenticationController(IConfiguration config, UserManager<User> userManager)
         {
             _config = config;
-            _tokenService = tokenService;
-            _userRepository = userRepository;
+            _userManager = userManager;
 
             _jwtTokenConfig = _config.GetSection("Tokens").Get<JwtTokenConfig>();
         }
 
         [AllowAnonymous]
-        [Route("login")]
         [HttpPost]
-        public IActionResult LoginToSession(string userName, string password)
+        [Route("login")]
+        public async Task<IActionResult> Login(string username, string password)
         {
-            if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(password))
-            {
-                return BadRequest("An error occured...");
-            }
+            var user = await _userManager.FindByNameAsync(username);
 
-            IActionResult response = Unauthorized();
-            var validUser = AuthenticateUser(userName, password);
-
-            if (validUser != null)
+            if (user != null && await _userManager.CheckPasswordAsync(user, password))
             {
-                generatedToken = _tokenService.BuildToken(_jwtTokenConfig, validUser);
-                if (generatedToken != null)
+                var userRoles = await _userManager.GetRolesAsync(user);
+
+                var authClaims = new List<Claim>
                 {
-                    HttpContext.Session.SetString("Token", generatedToken);
-                    response = Ok("Login Successful");
-                }
-            }
+                    new Claim(ClaimTypes.Name, user.UserName),
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                };
 
-            return response;
+                foreach (var userRole in userRoles)
+                {
+                    authClaims.Add(new Claim(ClaimTypes.Role, userRole));
+                }
+
+                var authSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtTokenConfig.Key));
+
+                var jwtSecurityToken = new JwtSecurityToken(
+                    issuer: _jwtTokenConfig.Issuer,
+                    audience: _jwtTokenConfig.Audience,
+                    expires: DateTime.Now.AddMinutes(_jwtTokenConfig.AccessTokenExpiration),
+                    claims: authClaims,
+                    signingCredentials: new SigningCredentials(authSigningKey, SecurityAlgorithms.HmacSha256)
+                    );
+
+                var token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken);
+                HttpContext.Session.SetString("Token", token);
+                
+                return Ok(new { token, jwtSecurityToken.ValidTo });
+            }
+            
+            return Unauthorized();
         }
 
         [AllowAnonymous]
-        [Route("getToken")]
         [HttpPost]
-        public IActionResult GetToken(string userName, string password)
+        [Route("register")]
+        public async Task<IActionResult> Register(string username, string email, string password)
         {
-            if (string.IsNullOrEmpty(userName) || string.IsNullOrEmpty(password))
+            var userExists = await _userManager.FindByNameAsync(username);
+            if (userExists != null)
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Status = "Error", Message = "User already exists!" });
+
+            User user = new()
             {
-                return BadRequest("An error occured...");
-            }
+                Email = email,
+                SecurityStamp = Guid.NewGuid().ToString(),
+                UserName = username
+            };
+            
+            var result = await _userManager.CreateAsync(user, password);
+            if (!result.Succeeded)
+                return StatusCode(StatusCodes.Status500InternalServerError, new { Status = "Error", Message = result.Errors.FirstOrDefault()?.Description });
 
-            IActionResult response = Unauthorized();
-            var validUser = AuthenticateUser(userName, password);
-
-            if (validUser != null)
-            {
-                generatedToken = _tokenService.BuildToken(_jwtTokenConfig, validUser);
-                if (generatedToken != null)
-                {
-                    response = Ok(generatedToken);
-                }
-            }
-
-            return response;
+            return Ok(new { Status = "Success", Message = "User created successfully!" });
         }
 
         [AllowAnonymous]
@@ -83,16 +100,15 @@ namespace BaseCoreAPI.Controllers
         [HttpGet]
         public IActionResult ValidateToken(string token)
         {
-            if (token == null)
-            {
-                return BadRequest("An error occured...");
-            }
+            IActionResult response = BadRequest("An error occured..."); ;
 
-            IActionResult response = BadRequest("Invalid Token");
-
-            if (_tokenService.ValidateToken(_jwtTokenConfig, token))
-            {
-                response = Ok("Valid Token");
+            if (token != null) 
+            { 
+                response = BadRequest("Invalid Token");
+                if (ValidateToken(_jwtTokenConfig, token))
+                {
+                    response = Ok("Valid Token");
+                }
             }
 
             return response;
@@ -109,9 +125,8 @@ namespace BaseCoreAPI.Controllers
             if (sessionToken == null || sessionToken == string.Empty)
             {
                 response = BadRequest("No Session Found");
-            }
-
-            if (_tokenService.ValidateToken(_jwtTokenConfig, sessionToken))
+            } 
+            else if (ValidateToken(_jwtTokenConfig, sessionToken))
             {
                 response = Ok("Session Valid");
             }
@@ -119,10 +134,31 @@ namespace BaseCoreAPI.Controllers
             return response;
         }
 
-        private UserDTO AuthenticateUser(string userName, string password)
+        private static bool ValidateToken(JwtTokenConfig jwtTokenConfig, string token)
         {
-            // Make more secure later.   
-            return _userRepository.GetUser(userName, password);
+            var mySecret = Encoding.UTF8.GetBytes(jwtTokenConfig.Key);
+            var mySecurityKey = new SymmetricSecurityKey(mySecret);
+            var tokenHandler = new JwtSecurityTokenHandler();
+
+            try
+            {
+                tokenHandler.ValidateToken(token,
+                new TokenValidationParameters
+                {
+                    ValidateIssuerSigningKey = true,
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidIssuer = jwtTokenConfig.Issuer,
+                    ValidAudience = jwtTokenConfig.Audience,
+                    IssuerSigningKey = mySecurityKey,
+                }, out SecurityToken validatedToken);
+            }
+            catch
+            {
+                return false;
+            }
+
+            return true;
         }
     }
 }
