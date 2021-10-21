@@ -4,13 +4,16 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using BaseCoreAPI.Data;
+using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
 using BaseCoreAPI.Services;
+using Microsoft.AspNetCore.Authentication;
 
 namespace BaseCoreAPI
 {
@@ -27,35 +30,64 @@ namespace BaseCoreAPI
         // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
+            var connectionString = _config.GetConnectionString("BaseConnectionString");
+            var mySqlVersion = new MySqlServerVersion(new Version(8, 0, 25));
+            
             var jwtTokenConfig = _config.GetSection("Tokens").Get<JwtTokenConfig>();
             services.AddSingleton(jwtTokenConfig);
             services.AddDistributedMemoryCache();
             services.AddSession();
             services.AddAuthentication(x =>
             {
+                x.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
                 x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                 x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            }).AddJwtBearer(x =>
-            {
-                x.RequireHttpsMetadata = true;
-                x.SaveToken = true;
-                x.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuer = true,
-                    ValidIssuer = jwtTokenConfig.Issuer,
-                    ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtTokenConfig.Key)),
-                    ValidAudience = jwtTokenConfig.Audience,
-                    ValidateAudience = true,
-                    ValidateLifetime = true,
-                    ClockSkew = jwtTokenConfig.AccessTokenExpiration > 0 ? TimeSpan.FromMinutes(jwtTokenConfig.AccessTokenExpiration) : TimeSpan.FromMinutes(1)
-                };
-            });
+            })
+                .AddIdentityServerJwt();
+                // .AddJwtBearer(x =>
+                // {
+                //     x.RequireHttpsMetadata = true;
+                //     x.SaveToken = true;
+                //     x.TokenValidationParameters = new TokenValidationParameters
+                //     {
+                //         ValidateIssuer = true,
+                //         ValidIssuer = jwtTokenConfig.Issuer,
+                //         ValidateIssuerSigningKey = true,
+                //         IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtTokenConfig.Key)),
+                //         ValidAudience = jwtTokenConfig.Audience,
+                //         ValidateAudience = true,
+                //         ValidateLifetime = true,
+                //         ClockSkew = jwtTokenConfig.AccessTokenExpiration > 0 ? TimeSpan.FromMinutes(jwtTokenConfig.AccessTokenExpiration) : TimeSpan.FromMinutes(1)
+                //     };
+                // });
 
             services.AddDbContext<BaseContext>(cfg =>
             {
-                cfg.UseMySql(_config.GetConnectionString("BaseConnectionString"), new MySqlServerVersion(new Version(8, 0, 25)));
+                cfg.UseMySql(connectionString, mySqlVersion);
             });
+
+            services.AddDbContext<IdentityContext>(cfg =>
+            {
+                cfg.UseMySql(connectionString, mySqlVersion);
+            });
+
+            services.AddDefaultIdentity<User>()
+                .AddEntityFrameworkStores<IdentityContext>();
+
+            services.AddIdentityServer()
+                .AddApiAuthorization<User, IdentityContext>()
+                .AddConfigurationStore(options =>
+                {
+                    options.ConfigureDbContext = builder => builder.UseMySql(connectionString, mySqlVersion);
+                })
+                .AddOperationalStore(options =>
+                {
+                    options.ConfigureDbContext = builder => builder.UseMySql(connectionString, mySqlVersion);
+                    options.EnableTokenCleanup = true;
+                    options.TokenCleanupInterval = 5000;
+                })
+                .AddSigningCredentials()
+                .AddDeveloperSigningCredential();
 
             // DependencyInjection registration.
             services.AddTransient<BaseSeeder>();
@@ -82,7 +114,9 @@ namespace BaseCoreAPI
 
             app.UseRouting();
             app.UseAuthentication();
-            app.UseAuthorization();
+            app.UseAuthorization(); // Should be included in below IdentityServer, but isn't.
+            app.UseIdentityServer();
+            
             app.UseEndpoints(cfg =>
             {
                 // Simple routing for API controllers. 

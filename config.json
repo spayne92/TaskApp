@@ -14,5 +14,13 @@
 		"Audience": "Users",
 		"AccessTokenExpiration": "15",
 		"RefreshTokenExpiration": "20"
-	}
+	},  
+	"IdentityServer": {
+		"Key": {
+		  "Type": "Store",
+		  "StoreName": "My",
+		  "StoreLocation": "LocalMachine",
+		  "Name": "CN=Mini-Tower"
+		}
+	  }
 }
