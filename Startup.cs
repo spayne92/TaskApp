@@ -4,13 +4,14 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using BaseCoreAPI.Data;
+using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
-using BaseCoreAPI.Services;
 
 namespace BaseCoreAPI
 {
@@ -23,19 +24,36 @@ namespace BaseCoreAPI
             _config = config;
         }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
-        // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
         public void ConfigureServices(IServiceCollection services)
         {
+            var mySqlVersion = new MySqlServerVersion(new Version(8, 0, 25));
+            var connectionString = _config.GetConnectionString("BaseConnectionString");
             var jwtTokenConfig = _config.GetSection("Tokens").Get<JwtTokenConfig>();
-            services.AddSingleton(jwtTokenConfig);
+
             services.AddDistributedMemoryCache();
             services.AddSession();
+
+            services.AddDbContext<BaseContext>(cfg =>
+            {
+                cfg.UseMySql(connectionString, mySqlVersion);
+            });
+
+            services.AddDbContext<IdentityContext>(cfg =>
+            {
+                cfg.UseMySql(connectionString, mySqlVersion);
+            });
+
+            services.AddIdentity<User, IdentityRole>()  
+                .AddEntityFrameworkStores<IdentityContext>()  
+                .AddDefaultTokenProviders();  
+
             services.AddAuthentication(x =>
             {
                 x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
                 x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            }).AddJwtBearer(x =>
+                x.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+            })
+            .AddJwtBearer(x =>
             {
                 x.RequireHttpsMetadata = true;
                 x.SaveToken = true;
@@ -52,20 +70,12 @@ namespace BaseCoreAPI
                 };
             });
 
-            services.AddDbContext<BaseContext>(cfg =>
-            {
-                cfg.UseMySql(_config.GetConnectionString("BaseConnectionString"), new MySqlServerVersion(new Version(8, 0, 25)));
-            });
-
             // DependencyInjection registration.
             services.AddTransient<BaseSeeder>();
-            services.AddTransient<IUserRepository, UserRepository>();
-            services.AddTransient<ITokenService, TokenService>();
 
             services.AddControllers();
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             app.UseSession();
@@ -80,9 +90,12 @@ namespace BaseCoreAPI
                 await next();
             });
 
+            app.UseHttpsRedirection(); 
             app.UseRouting();
+            
             app.UseAuthentication();
             app.UseAuthorization();
+
             app.UseEndpoints(cfg =>
             {
                 // Simple routing for API controllers. 
