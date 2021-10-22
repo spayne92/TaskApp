@@ -1,18 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Security.Claims;
-using System.Text;  
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
-using System.Linq;
 
 namespace BaseCoreAPI.Controllers
 {
@@ -64,11 +64,9 @@ namespace BaseCoreAPI.Controllers
                     );
 
                 var token = new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken);
-                HttpContext.Session.SetString("Token", token);
-                
                 return Ok(new { token, jwtSecurityToken.ValidTo });
             }
-            
+
             return Unauthorized();
         }
 
@@ -87,7 +85,7 @@ namespace BaseCoreAPI.Controllers
                 SecurityStamp = Guid.NewGuid().ToString(),
                 UserName = username
             };
-            
+
             var result = await _userManager.CreateAsync(user, password);
             if (!result.Succeeded)
                 return StatusCode(StatusCodes.Status500InternalServerError, new { Status = "Error", Message = result.Errors.FirstOrDefault()?.Description });
@@ -102,33 +100,13 @@ namespace BaseCoreAPI.Controllers
         {
             IActionResult response = BadRequest("An error occured..."); ;
 
-            if (token != null) 
-            { 
+            if (token != null)
+            {
                 response = BadRequest("Invalid Token");
                 if (ValidateToken(_jwtTokenConfig, token))
                 {
                     response = Ok("Valid Token");
                 }
-            }
-
-            return response;
-        }
-
-        [AllowAnonymous]
-        [Route("checkStatus")]
-        [HttpGet]
-        public IActionResult CheckSessionStatus()
-        {
-            string sessionToken = HttpContext.Session.GetString("Token");
-            IActionResult response = BadRequest("Session Expired");
-
-            if (sessionToken == null || sessionToken == string.Empty)
-            {
-                response = BadRequest("No Session Found");
-            } 
-            else if (ValidateToken(_jwtTokenConfig, sessionToken))
-            {
-                response = Ok("Session Valid");
             }
 
             return response;
@@ -143,15 +121,15 @@ namespace BaseCoreAPI.Controllers
             try
             {
                 tokenHandler.ValidateToken(token,
-                new TokenValidationParameters
-                {
-                    ValidateIssuerSigningKey = true,
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidIssuer = jwtTokenConfig.Issuer,
-                    ValidAudience = jwtTokenConfig.Audience,
-                    IssuerSigningKey = mySecurityKey,
-                }, out SecurityToken validatedToken);
+                    new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        ValidateIssuer = true,
+                        ValidateAudience = true,
+                        ValidIssuer = jwtTokenConfig.Issuer,
+                        ValidAudience = jwtTokenConfig.Audience,
+                        IssuerSigningKey = mySecurityKey,
+                    }, out SecurityToken validatedToken);
             }
             catch
             {

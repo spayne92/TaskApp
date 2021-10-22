@@ -3,12 +3,12 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using BaseCoreAPI.Data;
 using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
@@ -30,8 +30,42 @@ namespace BaseCoreAPI
             var connectionString = _config.GetConnectionString("BaseConnectionString");
             var jwtTokenConfig = _config.GetSection("Tokens").Get<JwtTokenConfig>();
 
-            services.AddDistributedMemoryCache();
-            services.AddSession();
+            services.AddSwaggerGen(c =>
+            {
+                c.SwaggerDoc("v1", new OpenApiInfo
+                {
+                    Version = "v1",
+                    Title = "Task App API",
+                    Description = "Managing Tasks performed on Surfaces within Rooms.",
+                    Contact = new OpenApiContact { Name = "Scott" },
+                    License = new OpenApiLicense { Name = "Don't use my stuff bro!" }
+                });
+
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Description = @"Enter Bearer token in the text input below.",
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.Http,
+                    Scheme = "Bearer"
+                });
+
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement()
+                {
+                    {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            },
+
+                        },
+                        Array.Empty<string>()
+                    }
+                });
+            });
 
             services.AddDbContext<BaseContext>(cfg =>
             {
@@ -43,9 +77,9 @@ namespace BaseCoreAPI
                 cfg.UseMySql(connectionString, mySqlVersion);
             });
 
-            services.AddIdentity<User, IdentityRole>()  
-                .AddEntityFrameworkStores<IdentityContext>()  
-                .AddDefaultTokenProviders();  
+            services.AddIdentity<User, IdentityRole>()
+                .AddEntityFrameworkStores<IdentityContext>()
+                .AddDefaultTokenProviders();
 
             services.AddAuthentication(x =>
             {
@@ -78,21 +112,15 @@ namespace BaseCoreAPI
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            app.UseSession();
-            app.Use(async (context, next) =>
+            app.UseSwagger();
+            app.UseSwaggerUI(c =>
             {
-                var token = context.Session.GetString("Token");
-                if (!string.IsNullOrEmpty(token))
-                {
-                    // Adds token to HTTP header if it exists in the session.
-                    context.Request.Headers.Add("Authorization", "Bearer " + token);
-                }
-                await next();
+                c.SwaggerEndpoint("/swagger/v1/swagger.json", "TaskApp API");
             });
 
-            app.UseHttpsRedirection(); 
+            app.UseHttpsRedirection();
             app.UseRouting();
-            
+
             app.UseAuthentication();
             app.UseAuthorization();
 
