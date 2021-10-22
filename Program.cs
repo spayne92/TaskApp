@@ -1,6 +1,8 @@
 using BaseCoreAPI.Data;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.HttpSys;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +22,10 @@ namespace BaseCoreAPI
             WebHost.CreateDefaultBuilder(args)
                    .ConfigureAppConfiguration(SetupConfiguration)
                    .UseStartup<Startup>()
+                   .ConfigureKestrel(o => 
+                        o.ConfigureHttpsDefaults(o => 
+                            o.ClientCertificateMode = ClientCertificateMode.RequireCertificate))
+                   .UseUrls(new[] {"https://localhost:8889", "https://localhost:8888"})
                    .Build();
 
         private static void SeedDb(IWebHost host)

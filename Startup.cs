@@ -12,6 +12,7 @@ using Microsoft.IdentityModel.Tokens;
 using BaseCoreAPI.Data;
 using BaseCoreAPI.Data.Entities;
 using BaseCoreAPI.Infrastructure;
+using Microsoft.Extensions.Hosting;
 
 namespace BaseCoreAPI
 {
@@ -78,6 +79,11 @@ namespace BaseCoreAPI
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            if (!env.IsDevelopment())
+            {
+                app.UseHsts();
+            }
+            
             app.UseSession();
             app.Use(async (context, next) =>
             {
@@ -90,7 +96,7 @@ namespace BaseCoreAPI
                 await next();
             });
 
-            app.UseHttpsRedirection(); 
+            app.UseHttpsRedirection();
             app.UseRouting();
             
             app.UseAuthentication();
